@@ -7,6 +7,7 @@ export interface Config
 	readonly botToken: string;
 	readonly logLevel: LogLevel;
 	readonly telegramProxyUrl: string | undefined;
+	readonly pollingTimeoutSeconds: number;
 }
 
 // Everything the logger must scrub. A proxy password appears in logs either as
@@ -102,10 +103,17 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
 		);
 	}
 
+	const rawTimeout = env.POLLING_TIMEOUT_SECONDS?.trim() || "30";
+	const pollingTimeoutSeconds = /^\d+$/.test(rawTimeout) ? Number(rawTimeout) : Number.NaN;
+	if (!(pollingTimeoutSeconds >= 1 && pollingTimeoutSeconds <= 50))
+	{
+		issues.push("POLLING_TIMEOUT_SECONDS must be a whole number of seconds from 1 to 50");
+	}
+
 	if (issues.length > 0 || logLevel === undefined)
 	{
 		throw new ConfigError(issues);
 	}
 
-	return { botToken, logLevel, telegramProxyUrl };
+	return { botToken, logLevel, telegramProxyUrl, pollingTimeoutSeconds };
 }

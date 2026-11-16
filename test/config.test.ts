@@ -27,14 +27,14 @@ describe("loadConfig", () =>
 {
 	it("accepts a well-formed token and defaults the log level to info", () =>
 	{
-		expect(loadConfig({ BOT_TOKEN: token })).toEqual({ botToken: token, logLevel: "info" });
+		expect(loadConfig({ BOT_TOKEN: token })).toMatchObject({ botToken: token, logLevel: "info" });
 	});
 
 	it("trims the whitespace an .env file or a copy-paste leaves around values", () =>
 	{
 		const config = loadConfig({ BOT_TOKEN: ` ${token}\n`, LOG_LEVEL: " debug " });
 
-		expect(config).toEqual({ botToken: token, logLevel: "debug" });
+		expect(config).toMatchObject({ botToken: token, logLevel: "debug" });
 	});
 
 	it("names every problem at once instead of stopping at the first", () =>
@@ -66,6 +66,28 @@ describe("loadConfig", () =>
 	it("rejects a log level pino does not know", () =>
 	{
 		expect(issuesOf({ BOT_TOKEN: token, LOG_LEVEL: "verbose" })).toEqual([expect.stringContaining("LOG_LEVEL")]);
+	});
+});
+
+describe("POLLING_TIMEOUT_SECONDS", () =>
+{
+	it("holds each getUpdates for 30 seconds by default, as grammY does", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token }).pollingTimeoutSeconds).toBe(30);
+	});
+
+	// Cloudflare WARP in Local Proxy mode drops any request longer than 10 seconds.
+	it("accepts a short timeout for proxies that cut long requests", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token, POLLING_TIMEOUT_SECONDS: " 5 " }).pollingTimeoutSeconds).toBe(5);
+	});
+
+	// 0 would turn long polling into a request every few milliseconds.
+	it.each(["0", "51", "5.5", "-3", "abc", "1e1"])("rejects %s", (value) =>
+	{
+		expect(issuesOf({ BOT_TOKEN: token, POLLING_TIMEOUT_SECONDS: value })).toEqual([
+			expect.stringContaining("POLLING_TIMEOUT_SECONDS"),
+		]);
 	});
 });
 

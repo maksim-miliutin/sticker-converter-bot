@@ -4,7 +4,7 @@ import { createBot } from "./bot/create-bot.ts";
 import { commands } from "./bot/menu.ts";
 import { ConfigError, loadConfig, secretsOf, type Config } from "./config.ts";
 import { createLogger, type Logger } from "./logger.ts";
-import { assertNoWebhook } from "./polling.ts";
+import { assertNoWebhook, pollingOptions } from "./polling.ts";
 import { proxyLabel, telegramClientOptions } from "./telegram-client.ts";
 
 async function poll(config: Config, logger: Logger): Promise<void>
@@ -29,10 +29,10 @@ async function poll(config: Config, logger: Logger): Promise<void>
 	process.once("SIGTERM", stop);
 
 	await bot.start({
-		allowed_updates: ["message", "callback_query"],
+		...pollingOptions(config.pollingTimeoutSeconds),
 		onStart: (me) =>
 		{
-			logger.info({ username: me.username }, "long polling started");
+			logger.info({ username: me.username, pollSeconds: config.pollingTimeoutSeconds }, "long polling started");
 		},
 	});
 

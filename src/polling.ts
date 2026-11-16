@@ -1,4 +1,4 @@
-import type { Api } from "grammy";
+import type { Api, PollingOptions } from "grammy";
 
 export class WebhookActiveError extends Error
 {
@@ -28,4 +28,12 @@ export async function assertNoWebhook(api: Pick<Api, "getWebhookInfo">): Promise
 		`this bot has a webhook at ${host} with ${String(info.pending_update_count)} waiting updates; `
 		+ "long polling would delete it. Use a separate test bot, or remove the webhook deliberately with deleteWebhook.",
 	);
+}
+
+// timeout is how long Telegram holds each getUpdates open while nothing happens.
+// Through a proxy that cuts long requests it must stay below that proxy's limit,
+// or every quiet poll ends in a network error and a 3-second retry pause.
+export function pollingOptions(timeoutSeconds: number): PollingOptions
+{
+	return { timeout: timeoutSeconds, allowed_updates: ["message", "callback_query"] };
 }
