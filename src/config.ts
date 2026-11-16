@@ -6,6 +6,36 @@ export interface Config
 {
 	readonly botToken: string;
 	readonly logLevel: LogLevel;
+	readonly telegramProxyUrl: string | undefined;
+}
+
+// Everything the logger must scrub. A proxy password appears in logs either as
+// written in the URL (percent-encoded) or decoded, so both forms are listed.
+export function secretsOf(config: Config): string[]
+{
+	const secrets = new Set([config.botToken]);
+
+	const password = config.telegramProxyUrl === undefined ? "" : URL.parse(config.telegramProxyUrl)?.password ?? "";
+	if (password !== "")
+	{
+		secrets.add(password);
+		secrets.add(decodedOrSame(password));
+	}
+
+	return [...secrets];
+}
+
+function decodedOrSame(value: string): string
+{
+	try
+	{
+		return decodeURIComponent(value);
+	}
+	catch
+	{
+		// A lone "%" is not an escape; the URL keeps such a password as written.
+		return value;
+	}
 }
 
 export class ConfigError extends Error
@@ -27,6 +57,17 @@ const tokenShape = /^\d{1,20}:[A-Za-z0-9_-]{30,}$/;
 function isLogLevel(value: string): value is LogLevel
 {
 	return (logLevels as readonly string[]).includes(value);
+}
+
+// The schemes socks-proxy-agent understands, minus its bare "socks:", which hides
+// whether names are resolved locally or by the proxy.
+const proxySchemes = ["socks5h:", "socks5:", "socks4a:", "socks4:"];
+
+function isProxyUrl(value: string): boolean
+{
+	const url = URL.parse(value);
+
+	return url !== null && proxySchemes.includes(url.protocol) && url.hostname !== "" && url.port !== "";
 }
 
 export function loadConfig(env: Readonly<Record<string, string | undefined>>): Config
@@ -51,10 +92,20 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
 		issues.push(`LOG_LEVEL must be one of ${logLevels.join(", ")}`);
 	}
 
+	const telegramProxyUrl = env.TELEGRAM_PROXY_URL?.trim() || undefined;
+	if (telegramProxyUrl !== undefined && !isProxyUrl(telegramProxyUrl))
+	{
+		// Not quoted either: a proxy URL may carry a login and password.
+		issues.push(
+			"TELEGRAM_PROXY_URL must be a SOCKS proxy with host and port, for example socks5h://127.0.0.1:40000 "
+			+ `(supported: ${proxySchemes.map((scheme) => scheme.slice(0, -1)).join(", ")})`,
+		);
+	}
+
 	if (issues.length > 0 || logLevel === undefined)
 	{
 		throw new ConfigError(issues);
 	}
 
-	return { botToken, logLevel };
+	return { botToken, logLevel, telegramProxyUrl };
 }

@@ -2,17 +2,19 @@ import process from "node:process";
 
 import { createBot } from "./bot/create-bot.ts";
 import { commands } from "./bot/menu.ts";
-import { ConfigError, loadConfig, type Config } from "./config.ts";
+import { ConfigError, loadConfig, secretsOf, type Config } from "./config.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { assertNoWebhook } from "./polling.ts";
+import { proxyLabel, telegramClientOptions } from "./telegram-client.ts";
 
 async function poll(config: Config, logger: Logger): Promise<void>
 {
-	const bot = createBot({ token: config.botToken, logger });
+	const client = telegramClientOptions(config.telegramProxyUrl);
+	const bot = createBot({ token: config.botToken, logger, client });
 
 	// grammY waits up to 500 seconds for an answer; without this line an unreachable
 	// Telegram looks like a terminal that does nothing at all.
-	logger.info("connecting to Telegram");
+	logger.info({ via: proxyLabel(config.telegramProxyUrl) }, "connecting to Telegram");
 	await bot.init();
 	await assertNoWebhook(bot.api);
 	await bot.api.setMyCommands(commands.map(({ command, description }) => ({ command, description })));
@@ -56,7 +58,7 @@ async function main(): Promise<number>
 	}
 
 	// From here on every error goes through the logger, which scrubs the token.
-	const logger = createLogger({ level: config.logLevel, secrets: [config.botToken] });
+	const logger = createLogger({ level: config.logLevel, secrets: secretsOf(config) });
 	try
 	{
 		await poll(config, logger);

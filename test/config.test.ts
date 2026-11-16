@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, loadConfig } from "../src/config.ts";
+import { ConfigError, loadConfig, secretsOf } from "../src/config.ts";
 
 const token = "123456789:AAHfake-token_for-tests-only0123456789";
 
@@ -66,5 +66,64 @@ describe("loadConfig", () =>
 	it("rejects a log level pino does not know", () =>
 	{
 		expect(issuesOf({ BOT_TOKEN: token, LOG_LEVEL: "verbose" })).toEqual([expect.stringContaining("LOG_LEVEL")]);
+	});
+});
+
+describe("TELEGRAM_PROXY_URL", () =>
+{
+	it("leaves the proxy off when the variable is unset or blank", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token }).telegramProxyUrl).toBeUndefined();
+		expect(loadConfig({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: "  " }).telegramProxyUrl).toBeUndefined();
+	});
+
+	it("accepts the Cloudflare WARP local proxy", () =>
+	{
+		const config = loadConfig({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: " socks5h://127.0.0.1:40000 " });
+
+		expect(config.telegramProxyUrl).toBe("socks5h://127.0.0.1:40000");
+	});
+
+	// An http:// proxy would need a different agent; accepting it silently would
+	// leave the bot on a direct connection that the network resets.
+	it.each([
+		"http://127.0.0.1:8080",
+		"127.0.0.1:40000",
+		"socks5h://127.0.0.1",
+		"socks5h://:40000",
+		"socks://127.0.0.1:40000",
+	])("rejects %s with a hint at the expected form", (url) =>
+	{
+		expect(issuesOf({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: url })).toEqual([
+			expect.stringContaining("socks5h://127.0.0.1:40000"),
+		]);
+	});
+
+	it("never repeats the proxy address in the error, since it may carry a password", () =>
+	{
+		const issues = issuesOf({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: "http://user:hunter2@proxy.example:8080" });
+
+		expect(issues.join("\n")).not.toContain("hunter2");
+	});
+
+	it("hands the proxy password to the logger as a secret, as written and decoded", () =>
+	{
+		const config = loadConfig({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: "socks5://user:p%40ss@127.0.0.1:1080" });
+
+		expect(secretsOf(config)).toEqual([token, "p%40ss", "p@ss"]);
+	});
+
+	it("keeps a password with a stray percent sign as written instead of failing at startup", () =>
+	{
+		const config = loadConfig({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: "socks5://user:50%off@127.0.0.1:1080" });
+
+		expect(secretsOf(config)).toEqual([token, "50%off"]);
+	});
+
+	it("has no proxy secrets when the proxy needs no password", () =>
+	{
+		const config = loadConfig({ BOT_TOKEN: token, TELEGRAM_PROXY_URL: "socks5h://127.0.0.1:40000" });
+
+		expect(secretsOf(config)).toEqual([token]);
 	});
 });
