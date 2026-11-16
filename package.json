@@ -9,9 +9,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "node --watch --env-file-if-exists=.env src/main.ts | pino-pretty",
+    "dev": "node --watch --disable-warning=DEP0040 --env-file-if-exists=.env src/main.ts | pino-pretty",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node --env-file-if-exists=.env dist/main.js",
+    "start": "node --disable-warning=DEP0040 --env-file-if-exists=.env dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -20,7 +20,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^6.0.1",
-    "@types/node": "^26.6.6",
+    "@types/node": "^24.19.2",
     "eslint": "^10.15.0",
     "pino-pretty": "^13.2.0",
     "typescript": "~6.0.3",

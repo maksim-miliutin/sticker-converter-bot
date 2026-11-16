@@ -52,7 +52,7 @@ export function reportOutages(logger: Logger): Transformer
 // carries the token, so the message is never logged whole. The system code comes
 // first (ECONNRESET, ETIMEDOUT, ECONNREFUSED); without one, the text after
 // "reason: " says what happened, for example a SOCKS proxy refusing the connection.
-function networkReason(error: unknown): string
+export function networkReason(error: unknown): string
 {
 	const cause = error instanceof HttpError ? error.error : error;
 	if (typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string")
