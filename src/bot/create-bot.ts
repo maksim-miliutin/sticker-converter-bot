@@ -2,6 +2,7 @@ import { Bot, type ApiClientOptions } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 
 import type { Logger } from "../logger.ts";
+import { reportOutages } from "../outages.ts";
 import { texts } from "../texts.ts";
 import { commands, parseMenuData, screenFor } from "./menu.ts";
 
@@ -26,6 +27,8 @@ export function createBot(deps: BotDependencies): Bot
 		...(deps.botInfo !== undefined && { botInfo: deps.botInfo }),
 		...(deps.client !== undefined && { client: deps.client }),
 	});
+
+	bot.api.config.use(reportOutages(deps.logger));
 
 	// The update id and kind are all that is logged: /privacy promises no message text.
 	bot.use(async (ctx, next) =>
