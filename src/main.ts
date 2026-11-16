@@ -1,0 +1,72 @@
+import process from "node:process";
+
+import { createBot } from "./bot/create-bot.ts";
+import { commands } from "./bot/menu.ts";
+import { ConfigError, loadConfig, type Config } from "./config.ts";
+import { createLogger, type Logger } from "./logger.ts";
+import { assertNoWebhook } from "./polling.ts";
+
+async function poll(config: Config, logger: Logger): Promise<void>
+{
+	const bot = createBot({ token: config.botToken, logger });
+
+	// grammY waits up to 500 seconds for an answer; without this line an unreachable
+	// Telegram looks like a terminal that does nothing at all.
+	logger.info("connecting to Telegram");
+	await bot.init();
+	await assertNoWebhook(bot.api);
+	await bot.api.setMyCommands(commands.map(({ command, description }) => ({ command, description })));
+
+	// Installed only now: a Ctrl+C during startup should simply end the process.
+	const stop = (): void =>
+	{
+		logger.info("stopping");
+		void bot.stop();
+	};
+	process.once("SIGINT", stop);
+	process.once("SIGTERM", stop);
+
+	await bot.start({
+		allowed_updates: ["message", "callback_query"],
+		onStart: (me) =>
+		{
+			logger.info({ username: me.username }, "long polling started");
+		},
+	});
+
+	logger.info("stopped");
+}
+
+async function main(): Promise<number>
+{
+	let config: Config;
+	try
+	{
+		config = loadConfig(process.env);
+	}
+	catch (error)
+	{
+		if (error instanceof ConfigError)
+		{
+			console.error(error.message);
+			return 1;
+		}
+
+		throw error;
+	}
+
+	// From here on every error goes through the logger, which scrubs the token.
+	const logger = createLogger({ level: config.logLevel, secrets: [config.botToken] });
+	try
+	{
+		await poll(config, logger);
+		return 0;
+	}
+	catch (error)
+	{
+		logger.fatal({ err: error }, "bot stopped on an error");
+		return 1;
+	}
+}
+
+process.exitCode = await main();
