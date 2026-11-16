@@ -3,6 +3,7 @@ import type { Update, UserFromGetMe } from "grammy/types";
 
 import type { Logger } from "../logger.ts";
 import { reportOutages } from "../outages.ts";
+import { describeError, handleBotError } from "./errors.ts";
 import { texts } from "../texts.ts";
 import { commands, parseMenuData, screenFor } from "./menu.ts";
 
@@ -45,7 +46,11 @@ export function createBot(deps: BotDependencies): Bot
 		}
 	});
 
-	const direct = bot.chatType("private");
+	// Errors are handled inside the update rather than by bot.catch, which only
+	// runs under bot.start(): a webhook would otherwise answer Telegram with an
+	// error and receive the same update again.
+	const guarded = bot.errorBoundary((error) => handleBotError(error, deps.logger));
+	const direct = guarded.chatType("private");
 
 	for (const entry of commands)
 	{
@@ -85,15 +90,16 @@ export function createBot(deps: BotDependencies): Bot
 
 	// Groups, inline messages and anything the handlers above passed on: the client
 	// keeps a spinner on the button until the query is answered.
-	bot.on("callback_query", async (ctx) =>
+	guarded.on("callback_query", async (ctx) =>
 	{
 		await ctx.answerCallbackQuery();
 	});
 
-	// Without a handler grammY prints the raw error to the console and stops polling.
+	// Last resort for anything outside the boundary. Without a handler grammY
+	// prints the raw error, payload included, and stops polling.
 	bot.catch((error) =>
 	{
-		deps.logger.error({ err: error.error, updateId: error.ctx.update.update_id }, "update failed");
+		deps.logger.error({ updateId: error.ctx.update.update_id, ...describeError(error.error) }, "update failed");
 	});
 
 	return bot;

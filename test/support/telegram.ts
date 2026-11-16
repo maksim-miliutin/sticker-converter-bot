@@ -31,15 +31,31 @@ const user = { id: 1001, is_bot: false, first_name: "Anna" };
 let updateId = 0;
 let messageId = 0;
 
+// How Telegram answers a method that fails: an API error such as 400 or 403, or a
+// thrown error for a request that never got an answer at all.
+export type Failure = { readonly error_code: number; readonly description: string } | Error;
+
 // Every Bot API call made by the bot is recorded and answered locally, so a test
 // sees exactly what would have gone to Telegram and nothing leaves the process.
-export function recordCalls(bot: Bot): ApiCall[]
+// Methods listed in failures fail every time they are called.
+export function recordCalls(bot: Bot, failures: Readonly<Record<string, Failure>> = {}): ApiCall[]
 {
 	const calls: ApiCall[] = [];
 
 	bot.api.config.use((_prev, method, payload) =>
 	{
 		calls.push({ method, payload: payload });
+
+		const failure = failures[method];
+		if (failure instanceof Error)
+		{
+			return Promise.reject(failure);
+		}
+
+		if (failure !== undefined)
+		{
+			return Promise.resolve({ ok: false, ...failure } as never);
+		}
 
 		const result = method === "sendMessage" || method === "editMessageText"
 			? { message_id: ++messageId, date: 1, chat: privateChat, text: "" }
