@@ -1,10 +1,10 @@
 import { HttpError } from "grammy";
+import { SocksProxyAgent } from "socks-proxy-agent";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBot } from "../src/bot/create-bot.ts";
 import { createLogger } from "../src/logger.ts";
 import { reportOutages } from "../src/outages.ts";
-import { telegramClientOptions } from "../src/telegram-client.ts";
 import { startRefusingSocksServer, type RefusingSocksServer } from "./support/socks.ts";
 import { botInfo } from "./support/telegram.ts";
 
@@ -147,7 +147,7 @@ describe("reportOutages", () =>
 			token,
 			logger,
 			botInfo,
-			client: telegramClientOptions(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
 		});
 
 		await expect(bot.api.getMe()).rejects.toThrow();

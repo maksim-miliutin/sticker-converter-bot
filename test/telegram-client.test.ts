@@ -1,8 +1,9 @@
+import { SocksProxyAgent } from "socks-proxy-agent";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBot } from "../src/bot/create-bot.ts";
 import { createLogger } from "../src/logger.ts";
-import { proxyLabel, telegramClientOptions } from "../src/telegram-client.ts";
+import { proxyLabel, telegramAgent, telegramClientOptions } from "../src/telegram-client.ts";
 import { botInfo } from "./support/telegram.ts";
 import { startRefusingSocksServer, type RefusingSocksServer } from "./support/socks.ts";
 
@@ -14,6 +15,22 @@ afterEach(async () =>
 {
 	await proxy?.close();
 	proxy = undefined;
+});
+
+describe("telegramAgent", () =>
+{
+	it("makes no agent when no proxy is configured, so Node connects directly", () =>
+	{
+		expect(telegramAgent(undefined)).toBeUndefined();
+	});
+
+	it("makes a SOCKS agent for the configured proxy", () =>
+	{
+		const agent = telegramAgent("socks5h://127.0.0.1:40000");
+
+		expect(agent).toBeInstanceOf(SocksProxyAgent);
+		expect((agent as SocksProxyAgent).proxy).toMatchObject({ host: "127.0.0.1", port: 40000, type: 5 });
+	});
 });
 
 describe("telegramClientOptions", () =>
@@ -33,7 +50,7 @@ describe("telegramClientOptions", () =>
 			token,
 			logger,
 			botInfo,
-			client: telegramClientOptions(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
 		});
 
 		await expect(bot.api.getMe()).rejects.toThrow();
