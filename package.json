@@ -9,9 +9,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "node --watch --env-file-if-exists=.env src/main.ts | pino-pretty",
+    "dev": "node --watch --disable-warning=DEP0040 --env-file-if-exists=.env src/main.ts | pino-pretty",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node --env-file-if-exists=.env dist/main.js",
+    "start": "node --disable-warning=DEP0040 --env-file-if-exists=.env dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
