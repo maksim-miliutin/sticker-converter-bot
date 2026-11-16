@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertNoWebhook, WebhookActiveError } from "../src/polling.ts";
+import { assertNoWebhook, pollingOptions, WebhookActiveError } from "../src/polling.ts";
 
 function apiWithWebhook(url: string | undefined, pending = 0): Parameters<typeof assertNoWebhook>[0]
 {
@@ -39,5 +39,18 @@ describe("assertNoWebhook", () =>
 		expect(String(error)).toContain("bot.example.com");
 		expect(String(error)).toContain("7");
 		expect(String(error)).not.toContain("s3cr3t-path");
+	});
+});
+
+describe("pollingOptions", () =>
+{
+	it("asks Telegram to hold each getUpdates no longer than configured", () =>
+	{
+		expect(pollingOptions(5)).toMatchObject({ timeout: 5 });
+	});
+
+	it("asks only for the update kinds the bot handles", () =>
+	{
+		expect(pollingOptions(30).allowed_updates).toEqual(["message", "callback_query"]);
 	});
 });

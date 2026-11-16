@@ -1,7 +1,8 @@
-import { Bot } from "grammy";
+import { Bot, type ApiClientOptions } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 
 import type { Logger } from "../logger.ts";
+import { reportOutages } from "../outages.ts";
 import { texts } from "../texts.ts";
 import { commands, parseMenuData, screenFor } from "./menu.ts";
 
@@ -11,6 +12,8 @@ export interface BotDependencies
 	readonly logger: Logger;
 	// Tests pass a fixed identity so the bot never calls getMe.
 	readonly botInfo?: UserFromGetMe;
+	// How requests reach Telegram, for example through a proxy.
+	readonly client?: ApiClientOptions;
 }
 
 function updateKind(update: Update): string
@@ -20,7 +23,12 @@ function updateKind(update: Update): string
 
 export function createBot(deps: BotDependencies): Bot
 {
-	const bot = new Bot(deps.token, deps.botInfo === undefined ? {} : { botInfo: deps.botInfo });
+	const bot = new Bot(deps.token, {
+		...(deps.botInfo !== undefined && { botInfo: deps.botInfo }),
+		...(deps.client !== undefined && { client: deps.client }),
+	});
+
+	bot.api.config.use(reportOutages(deps.logger));
 
 	// The update id and kind are all that is logged: /privacy promises no message text.
 	bot.use(async (ctx, next) =>
