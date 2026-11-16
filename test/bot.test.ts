@@ -146,7 +146,7 @@ describe("menu buttons", () =>
 		await bot.handleUpdate(callbackUpdate("menu:sticker", { inaccessible: true }));
 
 		expect(calls.map((call) => call.method)).toEqual(["answerCallbackQuery", "sendMessage"]);
-		expect(calls[1]?.payload.text).toBe(texts.stickerSoon);
+		expect(calls[1]?.payload.text).toBe(texts.stickerPrompt);
 	});
 
 	it("still acknowledges a button pressed in a group, so the client stops spinning", async () =>

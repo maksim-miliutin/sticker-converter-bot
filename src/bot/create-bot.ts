@@ -6,9 +6,12 @@ import type { Update, UserFromGetMe } from "grammy/types";
 import type { Logger } from "../logger.ts";
 import { reportOutages } from "../outages.ts";
 import { telegramClientOptions } from "../telegram-client.ts";
+import { downloadFile, type Download } from "../telegram-files.ts";
 import { describeError, handleBotError } from "./errors.ts";
 import { texts } from "../texts.ts";
+import { imageIntake, type FileLimits } from "./intake.ts";
 import { commands, parseMenuData, screenFor } from "./menu.ts";
+import { PendingImages } from "./pending.ts";
 
 export interface BotDependencies
 {
@@ -18,7 +21,15 @@ export interface BotDependencies
 	readonly botInfo?: UserFromGetMe;
 	// How requests and file downloads reach Telegram, for example a SOCKS proxy.
 	readonly agent?: Agent;
+	readonly limits?: FileLimits;
+	// Tests replace the download from Telegram.
+	readonly download?: (fileId: string) => Promise<Download>;
 }
+
+const defaultLimits: FileLimits = { maxFileBytes: 20 * 1024 * 1024, maxPixels: 50_000_000 };
+
+// Commands with their own handler below; the rest only show their screen.
+const ownHandlers = new Set(["cancel", "delete_me"]);
 
 function updateKind(update: Update): string
 {
@@ -55,7 +66,28 @@ export function createBot(deps: BotDependencies): Bot
 	const guarded = bot.errorBoundary((error) => handleBotError(error, deps.logger));
 	const direct = guarded.chatType("private");
 
-	for (const entry of commands)
+	const limits = deps.limits ?? defaultLimits;
+	const pending = new PendingImages({ ttlMs: 15 * 60_000, maxEntries: 1_000 });
+	const download = deps.download ?? ((fileId: string) => downloadFile(bot.api, fileId, {
+		token: deps.token,
+		maxBytes: limits.maxFileBytes,
+		...(deps.agent !== undefined && { agent: deps.agent }),
+	}));
+
+	direct.command("cancel", async (ctx) =>
+	{
+		const text = pending.clear(ctx.from.id) ? texts.cancelledPending : texts.cancel;
+		await ctx.reply(text, { reply_markup: screenFor("cancel").reply_markup });
+	});
+
+	direct.command("delete_me", async (ctx) =>
+	{
+		pending.clear(ctx.from.id);
+		const screen = screenFor("deleteMe");
+		await ctx.reply(screen.text, { reply_markup: screen.reply_markup });
+	});
+
+	for (const entry of commands.filter((command) => !ownHandlers.has(command.command)))
 	{
 		direct.command(entry.command, async (ctx) =>
 		{
@@ -63,6 +95,8 @@ export function createBot(deps: BotDependencies): Bot
 			await ctx.reply(screen.text, { reply_markup: screen.reply_markup });
 		});
 	}
+
+	direct.use(imageIntake({ pending, download, limits, logger: deps.logger }));
 
 	direct.on("callback_query:data", async (ctx) =>
 	{

@@ -90,6 +90,8 @@ export interface CallbackOptions
 	// Telegram sends a message with date 0 when the original can no longer be
 	// read or edited, for example after it was deleted.
 	readonly inaccessible?: boolean;
+	// Who pressed the button; Anna unless a test forges someone else.
+	readonly fromId?: number;
 }
 
 export function callbackUpdate(data: string, options: CallbackOptions = {}): Update
@@ -101,7 +103,62 @@ export function callbackUpdate(data: string, options: CallbackOptions = {}): Upd
 
 	return {
 		update_id: ++updateId,
-		callback_query: { id: `cb${String(updateId)}`, from: user, chat_instance: "ci", data, message },
+		callback_query: {
+			id: `cb${String(updateId)}`,
+			from: options.fromId === undefined ? user : { ...user, id: options.fromId },
+			chat_instance: "ci",
+			data,
+			message,
+		},
+	};
+}
+
+// Telegram lists a photo in several sizes, smallest first.
+export function photoUpdate(sizes: readonly { readonly fileId: string; readonly side: number; readonly bytes?: number }[]): Update
+{
+	return {
+		update_id: ++updateId,
+		message: {
+			message_id: ++messageId,
+			date: 1_700_000_000,
+			chat: privateChat,
+			from: user,
+			photo: sizes.map((size) => ({
+				file_id: size.fileId,
+				file_unique_id: `u-${size.fileId}`,
+				width: size.side,
+				height: size.side,
+				...(size.bytes !== undefined && { file_size: size.bytes }),
+			})),
+		},
+	};
+}
+
+export interface DocumentOptions
+{
+	readonly fileId?: string;
+	readonly mimeType?: string;
+	readonly bytes?: number;
+	readonly name?: string;
+}
+
+export function documentUpdate(options: DocumentOptions = {}): Update
+{
+	return {
+		update_id: ++updateId,
+		message: {
+			message_id: ++messageId,
+			date: 1_700_000_000,
+			chat: privateChat,
+			from: user,
+			document: {
+				file_id: options.fileId ?? "doc-1",
+				file_unique_id: "u-doc-1",
+				...(options.name !== undefined && { file_name: options.name }),
+				...(options.mimeType !== undefined && { mime_type: options.mimeType }),
+				...(options.bytes !== undefined && { file_size: options.bytes }),
+			},
+		},
 	};
 }
 

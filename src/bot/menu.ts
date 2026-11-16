@@ -32,8 +32,8 @@ export const commands: readonly CommandEntry[] = [
 
 const screenTexts: Record<ScreenId, string> = {
 	main: texts.welcome,
-	sticker: texts.stickerSoon,
-	convert: texts.convertSoon,
+	sticker: texts.stickerPrompt,
+	convert: texts.convertPrompt,
 	packs: texts.packsSoon,
 	help: texts.help,
 	privacy: texts.privacy,

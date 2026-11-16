@@ -10,7 +10,12 @@ import { proxyLabel, telegramAgent } from "./telegram-client.ts";
 async function poll(config: Config, logger: Logger): Promise<void>
 {
 	const agent = telegramAgent(config.telegramProxyUrl);
-	const bot = createBot({ token: config.botToken, logger, ...(agent !== undefined && { agent }) });
+	const bot = createBot({
+		token: config.botToken,
+		logger,
+		limits: { maxFileBytes: config.maxFileBytes, maxPixels: config.maxPixels },
+		...(agent !== undefined && { agent }),
+	});
 
 	// grammY waits up to 500 seconds for an answer; without this line an unreachable
 	// Telegram looks like a terminal that does nothing at all.
