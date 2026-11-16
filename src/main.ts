@@ -5,12 +5,20 @@ import { commands } from "./bot/menu.ts";
 import { ConfigError, loadConfig, secretsOf, type Config } from "./config.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { assertNoWebhook, pollingOptions } from "./polling.ts";
-import { proxyLabel, telegramClientOptions } from "./telegram-client.ts";
+import { PackStore } from "./store/packs.ts";
+import { proxyLabel, telegramAgent } from "./telegram-client.ts";
 
 async function poll(config: Config, logger: Logger): Promise<void>
 {
-	const client = telegramClientOptions(config.telegramProxyUrl);
-	const bot = createBot({ token: config.botToken, logger, client });
+	const agent = telegramAgent(config.telegramProxyUrl);
+	const packs = new PackStore(config.databasePath);
+	const bot = createBot({
+		token: config.botToken,
+		logger,
+		packs,
+		limits: { maxFileBytes: config.maxFileBytes, maxPixels: config.maxPixels },
+		...(agent !== undefined && { agent }),
+	});
 
 	// grammY waits up to 500 seconds for an answer; without this line an unreachable
 	// Telegram looks like a terminal that does nothing at all.
@@ -36,6 +44,7 @@ async function poll(config: Config, logger: Logger): Promise<void>
 		},
 	});
 
+	packs.close();
 	logger.info("stopped");
 }
 

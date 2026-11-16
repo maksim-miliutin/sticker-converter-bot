@@ -1,8 +1,9 @@
+import { SocksProxyAgent } from "socks-proxy-agent";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBot } from "../src/bot/create-bot.ts";
 import { createLogger } from "../src/logger.ts";
-import { proxyLabel, telegramClientOptions } from "../src/telegram-client.ts";
+import { proxyLabel, telegramAgent, telegramClientOptions } from "../src/telegram-client.ts";
 import { botInfo } from "./support/telegram.ts";
 import { startRefusingSocksServer, type RefusingSocksServer } from "./support/socks.ts";
 
@@ -14,6 +15,22 @@ afterEach(async () =>
 {
 	await proxy?.close();
 	proxy = undefined;
+});
+
+describe("telegramAgent", () =>
+{
+	it("makes no agent when no proxy is configured, so Node connects directly", () =>
+	{
+		expect(telegramAgent(undefined)).toBeUndefined();
+	});
+
+	it("makes a SOCKS agent for the configured proxy", () =>
+	{
+		const agent = telegramAgent("socks5h://127.0.0.1:40000");
+
+		expect(agent).toBeInstanceOf(SocksProxyAgent);
+		expect((agent as SocksProxyAgent).proxy).toMatchObject({ host: "127.0.0.1", port: 40000, type: 5 });
+	});
 });
 
 describe("telegramClientOptions", () =>
@@ -33,12 +50,33 @@ describe("telegramClientOptions", () =>
 			token,
 			logger,
 			botInfo,
-			client: telegramClientOptions(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			retry: { attempts: 1, delayMs: 0 },
 		});
 
 		await expect(bot.api.getMe()).rejects.toThrow();
 
 		expect(proxy.requests).toEqual([{ host: "api.telegram.org", port: 443, addressType: "domain" }]);
+	});
+});
+
+describe("a bot behind a flaky proxy", () =>
+{
+	// The proxy refusing to connect means the request never reached Telegram.
+	it("sends a refused request again before giving up", async () =>
+	{
+		proxy = await startRefusingSocksServer();
+		const bot = createBot({
+			token,
+			logger: createLogger({ level: "silent", secrets: [token] }),
+			botInfo,
+			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			retry: { attempts: 2, delayMs: 0 },
+		});
+
+		await expect(bot.api.getMe()).rejects.toThrow();
+
+		expect(proxy.requests).toHaveLength(2);
 	});
 });
 

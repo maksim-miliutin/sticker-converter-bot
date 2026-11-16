@@ -91,6 +91,42 @@ describe("POLLING_TIMEOUT_SECONDS", () =>
 	});
 });
 
+describe("DATABASE_PATH", () =>
+{
+	it("keeps the database in data/bot.sqlite unless told otherwise", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token }).databasePath).toBe("data/bot.sqlite");
+		expect(loadConfig({ BOT_TOKEN: token, DATABASE_PATH: " /var/lib/bot/bot.sqlite " }).databasePath).toBe("/var/lib/bot/bot.sqlite");
+	});
+});
+
+describe("file limits", () =>
+{
+	it("takes 20 MB and 50 megapixels by default", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token })).toMatchObject({ maxFileBytes: 20 * 1024 * 1024, maxPixels: 50_000_000 });
+	});
+
+	it("accepts lower limits", () =>
+	{
+		const config = loadConfig({ BOT_TOKEN: token, MAX_FILE_MB: "5", MAX_INPUT_MEGAPIXELS: "12" });
+
+		expect(config).toMatchObject({ maxFileBytes: 5 * 1024 * 1024, maxPixels: 12_000_000 });
+	});
+
+	// getFile in the cloud Bot API stops at 20 MB; a higher number would only
+	// promise users something Telegram refuses.
+	it.each(["21", "0", "abc"])("rejects MAX_FILE_MB=%s", (value) =>
+	{
+		expect(issuesOf({ BOT_TOKEN: token, MAX_FILE_MB: value })).toEqual([expect.stringContaining("MAX_FILE_MB")]);
+	});
+
+	it.each(["0", "101", "1.5"])("rejects MAX_INPUT_MEGAPIXELS=%s", (value) =>
+	{
+		expect(issuesOf({ BOT_TOKEN: token, MAX_INPUT_MEGAPIXELS: value })).toEqual([expect.stringContaining("MAX_INPUT_MEGAPIXELS")]);
+	});
+});
+
 describe("TELEGRAM_PROXY_URL", () =>
 {
 	it("leaves the proxy off when the variable is unset or blank", () =>

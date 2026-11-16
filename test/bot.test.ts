@@ -47,8 +47,11 @@ describe("commands", () =>
 
 			await bot.handleUpdate(textUpdate(`/${command}`));
 
+			// Commands with their own handler answer with their own text.
+			const own: Partial<Record<string, string>> = { delete_me: texts.deleteConfirm(0), packs: texts.packsEmpty };
+
 			expect(calls.map((call) => call.method)).toEqual(["sendMessage"]);
-			expect(calls[0]?.payload.text).toBe(screenFor(screen).text);
+			expect(calls[0]?.payload.text).toBe(own[command] ?? screenFor(screen).text);
 			expect(calls[0]?.payload.text).not.toBe(texts.hint);
 		},
 	);
@@ -146,7 +149,7 @@ describe("menu buttons", () =>
 		await bot.handleUpdate(callbackUpdate("menu:sticker", { inaccessible: true }));
 
 		expect(calls.map((call) => call.method)).toEqual(["answerCallbackQuery", "sendMessage"]);
-		expect(calls[1]?.payload.text).toBe(texts.stickerSoon);
+		expect(calls[1]?.payload.text).toBe(texts.stickerPrompt);
 	});
 
 	it("still acknowledges a button pressed in a group, so the client stops spinning", async () =>

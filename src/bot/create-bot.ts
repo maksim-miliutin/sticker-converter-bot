@@ -1,11 +1,20 @@
-import { Bot, type ApiClientOptions } from "grammy";
+import type { Agent } from "node:http";
+
+import { Bot } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 
 import type { Logger } from "../logger.ts";
 import { reportOutages } from "../outages.ts";
+import { retryUnsent, type RetryOptions } from "../retry.ts";
+import { PackStore } from "../store/packs.ts";
+import { telegramClientOptions } from "../telegram-client.ts";
+import { downloadFile, type Download } from "../telegram-files.ts";
 import { describeError, handleBotError } from "./errors.ts";
 import { texts } from "../texts.ts";
+import { imageIntake, type FileLimits } from "./intake.ts";
 import { commands, parseMenuData, screenFor } from "./menu.ts";
+import { Pending, type PendingImage } from "./pending.ts";
+import { stickerFlow, type StickerDraft } from "./stickers.ts";
 
 export interface BotDependencies
 {
@@ -13,9 +22,20 @@ export interface BotDependencies
 	readonly logger: Logger;
 	// Tests pass a fixed identity so the bot never calls getMe.
 	readonly botInfo?: UserFromGetMe;
-	// How requests reach Telegram, for example through a proxy.
-	readonly client?: ApiClientOptions;
+	// How requests and file downloads reach Telegram, for example a SOCKS proxy.
+	readonly agent?: Agent;
+	readonly limits?: FileLimits;
+	// Tests replace the download from Telegram.
+	readonly download?: (fileId: string) => Promise<Download>;
+	// The bot's record of the sticker sets it created; in memory unless given.
+	readonly packs?: PackStore;
+	readonly retry?: RetryOptions;
 }
+
+const defaultLimits: FileLimits = { maxFileBytes: 20 * 1024 * 1024, maxPixels: 50_000_000 };
+
+// Commands with their own handler below; the rest only show their screen.
+const ownHandlers = new Set(["cancel", "delete_me", "packs"]);
 
 function updateKind(update: Update): string
 {
@@ -26,9 +46,12 @@ export function createBot(deps: BotDependencies): Bot
 {
 	const bot = new Bot(deps.token, {
 		...(deps.botInfo !== undefined && { botInfo: deps.botInfo }),
-		...(deps.client !== undefined && { client: deps.client }),
+		client: telegramClientOptions(deps.agent),
 	});
 
+	// Installed first, so it sits next to the network and the outage report sees
+	// only what is left after a retry.
+	bot.api.config.use(retryUnsent(deps.retry ?? { attempts: 3, delayMs: 500 }));
 	bot.api.config.use(reportOutages(deps.logger));
 
 	// The update id and kind are all that is logged: /privacy promises no message text.
@@ -52,7 +75,62 @@ export function createBot(deps: BotDependencies): Bot
 	const guarded = bot.errorBoundary((error) => handleBotError(error, deps.logger));
 	const direct = guarded.chatType("private");
 
-	for (const entry of commands)
+	const limits = deps.limits ?? defaultLimits;
+	const pending = new Pending<PendingImage>({ ttlMs: 15 * 60_000, maxEntries: 1_000 });
+	const download = deps.download ?? ((fileId: string) => downloadFile(bot.api, fileId, {
+		token: deps.token,
+		maxBytes: limits.maxFileBytes,
+		...(deps.agent !== undefined && { agent: deps.agent }),
+	}));
+
+	const packs = deps.packs ?? new PackStore(":memory:");
+	const stickers = stickerFlow({
+		drafts: new Pending<StickerDraft>({ ttlMs: 30 * 60_000, maxEntries: 1_000 }),
+		packs,
+		botUsername: () => bot.botInfo.username,
+		titleTtlMs: 15 * 60_000,
+	});
+
+	direct.command("cancel", async (ctx) =>
+	{
+		const forgotImages = pending.clear(ctx.from.id);
+		const forgotStickers = stickers.forget(ctx.from.id);
+		const text = forgotImages || forgotStickers ? texts.cancelledPending : texts.cancel;
+		await ctx.reply(text, { reply_markup: screenFor("cancel").reply_markup });
+	});
+
+	direct.command("packs", async (ctx) =>
+	{
+		await ctx.reply(stickers.packsText(ctx.from.id), { reply_markup: screenFor("packs").reply_markup });
+	});
+
+	// The data is the presser's own, so the buttons carry no token: a forged press
+	// can only delete the forger's data, and pressing twice deletes nothing more.
+	direct.command("delete_me", async (ctx) =>
+	{
+		await ctx.reply(texts.deleteConfirm(packs.list(ctx.from.id).length), {
+			reply_markup: {
+				inline_keyboard: [[{ text: texts.deleteYes, callback_data: "del:yes" }, { text: texts.deleteNo, callback_data: "del:no" }]],
+			},
+		});
+	});
+
+	direct.callbackQuery("del:yes", async (ctx) =>
+	{
+		await ctx.answerCallbackQuery();
+		packs.removeOwner(ctx.from.id);
+		pending.clear(ctx.from.id);
+		stickers.forget(ctx.from.id);
+		await ctx.editMessageText(texts.deleted);
+	});
+
+	direct.callbackQuery("del:no", async (ctx) =>
+	{
+		await ctx.answerCallbackQuery();
+		await ctx.editMessageText(texts.deleteKept);
+	});
+
+	for (const entry of commands.filter((command) => !ownHandlers.has(command.command)))
 	{
 		direct.command(entry.command, async (ctx) =>
 		{
@@ -60,6 +138,9 @@ export function createBot(deps: BotDependencies): Bot
 			await ctx.reply(screen.text, { reply_markup: screen.reply_markup });
 		});
 	}
+
+	direct.use(stickers.composer);
+	direct.use(imageIntake({ pending, download, limits, logger: deps.logger, deliverSticker: stickers.deliver }));
 
 	direct.on("callback_query:data", async (ctx) =>
 	{
@@ -72,7 +153,8 @@ export function createBot(deps: BotDependencies): Bot
 
 		await ctx.answerCallbackQuery();
 
-		const screen = screenFor(target);
+		const fixed = screenFor(target);
+		const screen = target === "packs" ? { ...fixed, text: stickers.packsText(ctx.from.id) } : fixed;
 		const message = ctx.callbackQuery.message;
 		if (message === undefined || message.date === 0)
 		{
