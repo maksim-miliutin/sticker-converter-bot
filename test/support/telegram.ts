@@ -57,9 +57,13 @@ export function recordCalls(bot: Bot, failures: Readonly<Record<string, Failure>
 			return Promise.resolve({ ok: false, ...failure } as never);
 		}
 
-		const result = method === "sendMessage" || method === "editMessageText"
-			? { message_id: ++messageId, date: 1, chat: privateChat, text: "" }
-			: true;
+		const results: Partial<Record<string, unknown>> = {
+			sendMessage: { message_id: ++messageId, date: 1, chat: privateChat, text: "" },
+			editMessageText: { message_id: messageId, date: 1, chat: privateChat, text: "" },
+			uploadStickerFile: { file_id: "uploaded-1", file_unique_id: "uploaded-u1" },
+			sendSticker: { message_id: ++messageId, date: 1, chat: privateChat },
+		};
+		const result = results[method] ?? true;
 
 		return Promise.resolve({ ok: true, result } as never);
 	});

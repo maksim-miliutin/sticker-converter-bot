@@ -128,12 +128,12 @@ describe("picking an action", () =>
 	it("acknowledges the press, says it is checking, then reports what the image is", async () =>
 	{
 		const env = setup();
-		const { sticker } = await offered(env, photoUpdate([{ fileId: "small", side: 90 }, { fileId: "large", side: 1280 }]));
+		const { convert } = await offered(env, photoUpdate([{ fileId: "small", side: 90 }, { fileId: "large", side: 1280 }]));
 
-		await env.bot.handleUpdate(callbackUpdate(sticker));
+		await env.bot.handleUpdate(callbackUpdate(convert));
 
 		expect(methods(env.calls.slice(1))).toEqual(["answerCallbackQuery", "editMessageText", "editMessageText"]);
-		expect(texts_(env.calls.slice(2))).toEqual([texts.checking, texts.imageAccepted("PNG, 300×200, 1 КБ", "sticker")]);
+		expect(texts_(env.calls.slice(2))).toEqual([texts.checking, texts.imageAccepted("PNG, 300×200, 1 КБ")]);
 		expect(env.downloads).toEqual(["large"]);
 	});
 
@@ -145,7 +145,7 @@ describe("picking an action", () =>
 
 		await env.bot.handleUpdate(callbackUpdate(convert));
 
-		expect(env.calls.at(-1)?.payload.text).toBe(texts.imageAccepted("PNG с прозрачностью, 64×64, 1,2 МБ", "convert"));
+		expect(env.calls.at(-1)?.payload.text).toBe(texts.imageAccepted("PNG с прозрачностью, 64×64, 1,2 МБ"));
 	});
 
 	it.each([
@@ -254,12 +254,17 @@ describe("buttons that must not act", () =>
 		},
 	);
 
-	it.each(["/cancel", "/delete_me"])("%s forgets every image still waiting", async (command) =>
+	it.each([["/cancel"], ["/delete_me", "del:yes"]])("%s forgets every image still waiting", async (command, confirm?: string) =>
 	{
 		const env = setup();
 		const { sticker } = await offered(env);
 
 		await env.bot.handleUpdate(textUpdate(command));
+		if (confirm !== undefined)
+		{
+			await env.bot.handleUpdate(callbackUpdate(confirm));
+		}
+
 		await env.bot.handleUpdate(callbackUpdate(sticker));
 
 		expect(env.downloads).toEqual([]);

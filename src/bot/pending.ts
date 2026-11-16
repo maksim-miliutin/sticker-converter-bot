@@ -1,8 +1,12 @@
 import { randomBytes } from "node:crypto";
 
-export interface PendingImage
+export interface Owned
 {
 	readonly owner: number;
+}
+
+export interface PendingImage extends Owned
+{
 	readonly fileId: string;
 	readonly fromPhoto: boolean;
 }
@@ -14,21 +18,22 @@ export interface PendingOptions
 	readonly now?: () => number;
 }
 
-interface Entry
+interface Entry<T>
 {
-	readonly image: PendingImage;
+	readonly item: T;
 	readonly expiresAt: number;
 }
 
-// Images sent to the bot and still waiting for the user to pick an action. The
-// callback button carries only a random token; the file id and the owner stay
-// here, because callback data is capped at 64 bytes and comes back untrusted.
+// Things waiting for the user's next press: an image waiting for an action, a
+// sticker waiting for its pack. The callback button carries only a random token;
+// the data and the owner stay here, because callback data is capped at 64 bytes
+// and comes back untrusted.
 //
 // Kept in memory on purpose until the database arrives: a restart forgets every
 // waiting image, and its buttons then answer as stale, which is safe.
-export class PendingImages
+export class Pending<T extends Owned>
 {
-	private readonly entries = new Map<string, Entry>();
+	private readonly entries = new Map<string, Entry<T>>();
 	private readonly ttlMs: number;
 	private readonly maxEntries: number;
 	private readonly now: () => number;
@@ -40,10 +45,10 @@ export class PendingImages
 		this.now = options.now ?? Date.now;
 	}
 
-	add(image: PendingImage): string
+	add(item: T): string
 	{
 		const token = randomBytes(12).toString("base64url");
-		this.entries.set(token, { image, expiresAt: this.now() + this.ttlMs });
+		this.entries.set(token, { item, expiresAt: this.now() + this.ttlMs });
 
 		// A Map iterates in insertion order, so the first key is the oldest.
 		for (const oldest of this.entries.keys())
@@ -60,18 +65,18 @@ export class PendingImages
 	}
 
 	// Single use: a repeated press or a redelivered update finds nothing. A token
-	// of someone else's image leaves that image waiting for its owner.
-	take(token: string, userId: number): PendingImage | undefined
+	// of someone else's item leaves that item waiting for its owner.
+	take(token: string, userId: number): T | undefined
 	{
 		const entry = this.entries.get(token);
-		if (entry === undefined || entry.image.owner !== userId)
+		if (entry === undefined || entry.item.owner !== userId)
 		{
 			return undefined;
 		}
 
 		this.entries.delete(token);
 
-		return entry.expiresAt > this.now() ? entry.image : undefined;
+		return entry.expiresAt > this.now() ? entry.item : undefined;
 	}
 
 	clear(userId: number): boolean
@@ -79,7 +84,7 @@ export class PendingImages
 		let cleared = false;
 		for (const [token, entry] of this.entries)
 		{
-			if (entry.image.owner === userId)
+			if (entry.item.owner === userId)
 			{
 				this.entries.delete(token);
 				cleared = true;

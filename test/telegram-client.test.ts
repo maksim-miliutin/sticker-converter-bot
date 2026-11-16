@@ -51,11 +51,32 @@ describe("telegramClientOptions", () =>
 			logger,
 			botInfo,
 			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			retry: { attempts: 1, delayMs: 0 },
 		});
 
 		await expect(bot.api.getMe()).rejects.toThrow();
 
 		expect(proxy.requests).toEqual([{ host: "api.telegram.org", port: 443, addressType: "domain" }]);
+	});
+});
+
+describe("a bot behind a flaky proxy", () =>
+{
+	// The proxy refusing to connect means the request never reached Telegram.
+	it("sends a refused request again before giving up", async () =>
+	{
+		proxy = await startRefusingSocksServer();
+		const bot = createBot({
+			token,
+			logger: createLogger({ level: "silent", secrets: [token] }),
+			botInfo,
+			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			retry: { attempts: 2, delayMs: 0 },
+		});
+
+		await expect(bot.api.getMe()).rejects.toThrow();
+
+		expect(proxy.requests).toHaveLength(2);
 	});
 });
 

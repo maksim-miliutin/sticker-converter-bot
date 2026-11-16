@@ -148,6 +148,7 @@ describe("reportOutages", () =>
 			logger,
 			botInfo,
 			agent: new SocksProxyAgent(`socks5h://127.0.0.1:${String(proxy.port)}`),
+			retry: { attempts: 1, delayMs: 0 },
 		});
 
 		await expect(bot.api.getMe()).rejects.toThrow();

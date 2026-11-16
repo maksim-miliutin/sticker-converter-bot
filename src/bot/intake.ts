@@ -2,10 +2,11 @@ import { Composer, type Context } from "grammy";
 import type { InlineKeyboardMarkup } from "grammy/types";
 
 import { inspectImage, type ImageFormat, type ImageInfo, type ImageProblem } from "../images/inspect.ts";
+import { makeSticker, type Sticker } from "../images/sticker.ts";
 import type { Logger } from "../logger.ts";
 import type { Download } from "../telegram-files.ts";
 import { texts } from "../texts.ts";
-import type { PendingImages } from "./pending.ts";
+import type { Pending, PendingImage } from "./pending.ts";
 
 export interface FileLimits
 {
@@ -15,10 +16,11 @@ export interface FileLimits
 
 export interface IntakeDependencies
 {
-	readonly pending: PendingImages;
+	readonly pending: Pending<PendingImage>;
 	readonly download: (fileId: string) => Promise<Download>;
 	readonly limits: FileLimits;
 	readonly logger: Logger;
+	readonly deliverSticker: (ctx: Context, sticker: Sticker) => Promise<void>;
 }
 
 // Telegram fills mime_type from the file name, so it only decides what is refused
@@ -141,33 +143,59 @@ export function imageIntake(deps: IntakeDependencies): Composer<Context>
 			return;
 		}
 
-		await ctx.editMessageText(texts.checking);
-		await ctx.editMessageText(await verdict(image.fileId, action, deps));
+		await ctx.editMessageText(action === "sticker" ? texts.making : texts.checking);
+		const fetched = await fetchImage(image.fileId, deps);
+		if (!fetched.ok)
+		{
+			await ctx.editMessageText(fetched.text);
+			return;
+		}
+
+		if (action === "convert")
+		{
+			await ctx.editMessageText(texts.imageAccepted(describeImage(fetched.image)));
+			return;
+		}
+
+		const sticker = await makeSticker(fetched.bytes, deps.limits.maxPixels);
+		if (sticker === undefined)
+		{
+			await ctx.editMessageText(texts.stickerTooHeavy);
+			return;
+		}
+
+		await deps.deliverSticker(ctx, sticker);
+		await ctx.editMessageText(texts.stickerReady(sticker.width, sticker.height, Math.max(1, Math.round(sticker.bytes.length / 1024))));
 	});
 
 	return intake;
 }
 
-async function verdict(fileId: string, action: "sticker" | "convert", deps: IntakeDependencies): Promise<string>
+type Fetched =
+	| { readonly ok: true; readonly bytes: Buffer; readonly image: ImageInfo }
+	| { readonly ok: false; readonly text: string };
+
+// Downloads and inspects; on failure returns the message to show instead.
+async function fetchImage(fileId: string, deps: IntakeDependencies): Promise<Fetched>
 {
 	const download = await deps.download(fileId);
 	if (!download.ok)
 	{
 		if (download.problem === "too-large")
 		{
-			return texts.tooLarge(deps.limits.maxFileBytes / 1024 / 1024);
+			return { ok: false, text: texts.tooLarge(deps.limits.maxFileBytes / 1024 / 1024) };
 		}
 
 		deps.logger.warn({ reason: download.reason }, "image download failed");
 
-		return texts.downloadFailed;
+		return { ok: false, text: texts.downloadFailed };
 	}
 
 	const inspection = await inspectImage(download.bytes, { maxPixels: deps.limits.maxPixels });
 	if (!inspection.ok)
 	{
-		return problemText(inspection.problem, deps.limits);
+		return { ok: false, text: problemText(inspection.problem, deps.limits) };
 	}
 
-	return texts.imageAccepted(describeImage(inspection.image), action);
+	return { ok: true, bytes: download.bytes, image: inspection.image };
 }

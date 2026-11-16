@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PendingImages, type PendingImage } from "../src/bot/pending.ts";
+import { Pending, type PendingImage } from "../src/bot/pending.ts";
 
 const anna = 1001;
 const boris = 2002;
@@ -10,15 +10,15 @@ function image(owner: number, fileId = "file-a"): PendingImage
 	return { owner, fileId, fromPhoto: false };
 }
 
-function store(options: { maxEntries?: number } = {}): { pending: PendingImages; advance: (ms: number) => void }
+function store(options: { maxEntries?: number } = {}): { pending: Pending<PendingImage>; advance: (ms: number) => void }
 {
 	let now = 0;
-	const pending = new PendingImages({ ttlMs: 15 * 60_000, maxEntries: options.maxEntries ?? 100, now: () => now });
+	const pending = new Pending<PendingImage>({ ttlMs: 15 * 60_000, maxEntries: options.maxEntries ?? 100, now: () => now });
 
 	return { pending, advance: (ms) => (now += ms) };
 }
 
-describe("PendingImages", () =>
+describe("Pending", () =>
 {
 	it("hands an image back to its owner once", () =>
 	{

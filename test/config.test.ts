@@ -91,6 +91,15 @@ describe("POLLING_TIMEOUT_SECONDS", () =>
 	});
 });
 
+describe("DATABASE_PATH", () =>
+{
+	it("keeps the database in data/bot.sqlite unless told otherwise", () =>
+	{
+		expect(loadConfig({ BOT_TOKEN: token }).databasePath).toBe("data/bot.sqlite");
+		expect(loadConfig({ BOT_TOKEN: token, DATABASE_PATH: " /var/lib/bot/bot.sqlite " }).databasePath).toBe("/var/lib/bot/bot.sqlite");
+	});
+});
+
 describe("file limits", () =>
 {
 	it("takes 20 MB and 50 megapixels by default", () =>

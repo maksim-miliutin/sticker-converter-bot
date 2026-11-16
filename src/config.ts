@@ -10,6 +10,7 @@ export interface Config
 	readonly pollingTimeoutSeconds: number;
 	readonly maxFileBytes: number;
 	readonly maxPixels: number;
+	readonly databasePath: string;
 }
 
 // Everything the logger must scrub. A proxy password appears in logs either as
@@ -134,5 +135,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
 		pollingTimeoutSeconds,
 		maxFileBytes: maxFileMb * 1024 * 1024,
 		maxPixels: maxMegapixels * 1_000_000,
+		databasePath: env.DATABASE_PATH?.trim() || "data/bot.sqlite",
 	};
 }

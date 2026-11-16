@@ -34,7 +34,7 @@ const screenTexts: Record<ScreenId, string> = {
 	main: texts.welcome,
 	sticker: texts.stickerPrompt,
 	convert: texts.convertPrompt,
-	packs: texts.packsSoon,
+	packs: texts.packsEmpty,
 	help: texts.help,
 	privacy: texts.privacy,
 	deleteMe: texts.deleteMe,
