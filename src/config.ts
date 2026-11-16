@@ -8,6 +8,8 @@ export interface Config
 	readonly logLevel: LogLevel;
 	readonly telegramProxyUrl: string | undefined;
 	readonly pollingTimeoutSeconds: number;
+	readonly maxFileBytes: number;
+	readonly maxPixels: number;
 }
 
 // Everything the logger must scrub. A proxy password appears in logs either as
@@ -103,17 +105,34 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
 		);
 	}
 
-	const rawTimeout = env.POLLING_TIMEOUT_SECONDS?.trim() || "30";
-	const pollingTimeoutSeconds = /^\d+$/.test(rawTimeout) ? Number(rawTimeout) : Number.NaN;
-	if (!(pollingTimeoutSeconds >= 1 && pollingTimeoutSeconds <= 50))
+	const wholeNumber = (name: string, fallback: number, max: number, unit: string): number =>
 	{
-		issues.push("POLLING_TIMEOUT_SECONDS must be a whole number of seconds from 1 to 50");
-	}
+		const raw = env[name]?.trim() || String(fallback);
+		const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+		if (!(value >= 1 && value <= max))
+		{
+			issues.push(`${name} must be a whole number of ${unit} from 1 to ${String(max)}`);
+		}
+
+		return value;
+	};
+
+	const pollingTimeoutSeconds = wholeNumber("POLLING_TIMEOUT_SECONDS", 30, 50, "seconds");
+	// The cloud Bot API serves files through getFile up to 20 MB.
+	const maxFileMb = wholeNumber("MAX_FILE_MB", 20, 20, "megabytes");
+	const maxMegapixels = wholeNumber("MAX_INPUT_MEGAPIXELS", 50, 100, "megapixels");
 
 	if (issues.length > 0 || logLevel === undefined)
 	{
 		throw new ConfigError(issues);
 	}
 
-	return { botToken, logLevel, telegramProxyUrl, pollingTimeoutSeconds };
+	return {
+		botToken,
+		logLevel,
+		telegramProxyUrl,
+		pollingTimeoutSeconds,
+		maxFileBytes: maxFileMb * 1024 * 1024,
+		maxPixels: maxMegapixels * 1_000_000,
+	};
 }
